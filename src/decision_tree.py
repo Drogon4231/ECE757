@@ -22,7 +22,8 @@ X = df[["num_nodes", "num_edges", "average_degree", "nodes_per_partition", "edge
 
 # Target: Normalized runtime
 runtime_scaler = StandardScaler()
-X_scaled = runtime_scaler.fit_transform(X)  # Scale features FIRST
+feature_scaler = StandardScaler()
+X_scaled = feature_scaler.fit_transform(X)  # Scale features FIRST
 y = runtime_scaler.fit_transform(df[["runtime"]]).flatten()
 
 # ----------------------------
@@ -45,7 +46,7 @@ y_val_t = torch.tensor(y_val, dtype=torch.float32).unsqueeze(1)
 # 3. Device Configuration (GPU or CPU)
 # ----------------------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
+print(f"✅ Using device: {device}")
 
 # ----------------------------
 # 4. Define Neural Network Model (with Batch Normalization)
@@ -111,6 +112,6 @@ model.eval()
 torch.save(model, "config_predictor.pth")
 
 joblib.dump(runtime_scaler, "runtime_scaler.pkl")
-joblib.dump(scaler, "feature_scaler.pkl")
+joblib.dump(feature_scaler, "feature_scaler.pkl")
 
-print("Saved model and scalers")
+print("✅ Saved model and scalers")
