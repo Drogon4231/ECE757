@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -10,7 +10,8 @@ import joblib
 # ----------------------------
 # 1. Load & Prepare Data
 # ----------------------------
-df = pd.read_csv("benchmark_results 1.csv")
+df = pd.read_csv("/Users/harshithkantamneni/Desktop/757_Project/code/ECE757/src/benchmark_results 1.csv")
+
 
 # Feature Engineering
 df["nodes_per_partition"] = df["num_nodes"] / df["partition_size"]
@@ -20,10 +21,10 @@ df["size_ratio"] = df["matrix_size"] / df["partition_size"]
 # Features
 X = df[["num_nodes", "num_edges", "average_degree", "nodes_per_partition", "edge_density", "size_ratio"]].values
 
-# Target: Normalized runtime
-runtime_scaler = StandardScaler()
-feature_scaler = StandardScaler()
-X_scaled = feature_scaler.fit_transform(X)  # Scale features FIRST
+# Target: runtime (min-max scaled to [0, 1])
+runtime_scaler = MinMaxScaler()
+feature_scaler = MinMaxScaler()
+X_scaled = feature_scaler.fit_transform(X)
 y = runtime_scaler.fit_transform(df[["runtime"]]).flatten()
 
 # ----------------------------
@@ -49,7 +50,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"✅ Using device: {device}")
 
 # ----------------------------
-# 4. Define Neural Network Model (with Batch Normalization)
+# 4. Define Neural Network Model
 # ----------------------------
 class ConfigPredictor(nn.Module):
     def __init__(self, input_dim=6):
@@ -58,7 +59,7 @@ class ConfigPredictor(nn.Module):
             nn.Linear(input_dim, 16),
             nn.BatchNorm1d(16),
             nn.ReLU(),
-            nn.Linear(16, 1)  # Output layer
+            nn.Linear(16, 1)
         )
 
     def forward(self, x):
@@ -67,10 +68,10 @@ class ConfigPredictor(nn.Module):
 model = ConfigPredictor().to(device)
 
 # ----------------------------
-# 5. Training Setup (AdamW Optimizer)
+# 5. Training Setup
 # ----------------------------
 loss_fn = nn.MSELoss()
-optimizer = optim.AdamW(model.parameters(), lr=0.01, weight_decay=0.001)  # AdamW
+optimizer = optim.AdamW(model.parameters(), lr=0.01, weight_decay=0.001)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10)
 
 # ----------------------------
@@ -100,18 +101,20 @@ for epoch in range(EPOCHS):
     # Save best model
     if val_loss < best_loss:
         best_loss = val_loss
-        torch.save(model.state_dict(), "best_config_predictor.pth")
+        torch.save(model.state_dict(), "best_config_predictor.pt")
 
 # ----------------------------
-# 7. Save Model and Scalers
+# 7. Save TorchScript Model and Scalers
 # ----------------------------
-model.load_state_dict(torch.load("best_config_predictor.pth"))
+model.load_state_dict(torch.load("best_config_predictor.pt"))
 model.eval()
 
-# Save model
-torch.save(model, "config_predictor.pth")
+# Convert to TorchScript
+scripted_model = torch.jit.script(model)
+scripted_model.save("config_predictor.pt")
+print("✅ Saved TorchScript model.")
 
+# Save scalers
 joblib.dump(runtime_scaler, "runtime_scaler.pkl")
 joblib.dump(feature_scaler, "feature_scaler.pkl")
-
 print("✅ Saved model and scalers")
