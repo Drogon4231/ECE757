@@ -1,44 +1,74 @@
 import pandas as pd
 import numpy as np
-import torch
 import joblib
+import os
 
-# Load model and scalers
-model = torch.jit.load("/Users/harshithkantamneni/Desktop/757_Project/code/ECE757/src/runtime_regressor.pt", map_location="cpu")
-model.eval()
-feature_scaler = joblib.load("/Users/harshithkantamneni/Desktop/757_Project/code/ECE757/src/feature_scaler.pkl")
-target_scaler = joblib.load("/Users/harshithkantamneni/Desktop/757_Project/code/ECE757/src/target_scaler.pkl")
+# ----------------------------
+# Config
+# ----------------------------
+partition_sizes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+data_path = "data/ml_data/training_data.csv"
+model_path = "scripts/models/model.pkl"
+scaler_path = "scripts/models/scaler.pkl"
 
-# All possible partition sizes
-partition_sizes = [10,20,30,40,50,60,70,80,90,100]
+# ----------------------------
+# Load model and scaler
+# ----------------------------
+model = joblib.load(model_path)
+scaler = joblib.load(scaler_path)
 
-# Load data for true best comparison
-df = pd.read_csv("/Users/harshithkantamneni/Desktop/757_Project/code/ECE757/src/benchmark_results 1.csv")
+# ----------------------------
+# Load benchmark/training data
+# ----------------------------
+df = pd.read_csv(data_path)
 
+# ----------------------------
+# Evaluation
+# ----------------------------
 print("matrix_size | true_best_partition | predicted_best_partition | runtimes (partition: predicted_runtime)")
 
+results = []
+
 for matrix_size in sorted(df['matrix_size'].unique()):
-    # True best partition size
     subset = df[df['matrix_size'] == matrix_size]
+
+    # True best
     true_best_partition = subset.loc[subset['runtime'].idxmin(), 'partition_size']
 
-    # Predict for all partition sizes
+    # Predict
     features = []
     for p in partition_sizes:
         size_ratio = matrix_size / p
         log_matrix_size = np.log1p(matrix_size)
         log_partition_size = np.log1p(p)
         features.append([matrix_size, p, size_ratio, log_matrix_size, log_partition_size])
-    features = np.array(features)
-    features_scaled = feature_scaler.transform(features)
-    input_tensor = torch.tensor(features_scaled, dtype=torch.float32)
-    with torch.no_grad():
-        preds_scaled = model(input_tensor).cpu().numpy()
-    # Inverse transform: first MinMaxScaler, then expm1
-    preds_log = target_scaler.inverse_transform(preds_scaled)
-    preds = np.expm1(preds_log).flatten()
+
+    feature_cols = ['matrix_size', 'partition_size', 'size_ratio', 'log_matrix_size', 'log_partition_size']
+    features_df = pd.DataFrame(features, columns=feature_cols)
+
+    # Scale and predict
+    scaled = scaler.transform(features_df)
+    preds = model.predict(scaled)
+
     predicted_best_idx = np.argmin(preds)
     predicted_best_partition = partition_sizes[predicted_best_idx]
+
     runtimes_str = ", ".join(f"{p}:{int(rt)}" for p, rt in zip(partition_sizes, preds))
+
+    results.append({
+        "matrix_size": matrix_size,
+        "true_best_partition": true_best_partition,
+        "predicted_best_partition": predicted_best_partition,
+        "runtimes_str": runtimes_str
+    })
+
     print(f"{matrix_size:11} | {true_best_partition:18} | {predicted_best_partition:23} | {runtimes_str}")
     print("-" * 100)
+
+# ----------------------------
+# Save results
+# ----------------------------
+os.makedirs("results", exist_ok=True)
+out_df = pd.DataFrame(results)
+out_df.to_csv("results/diagnostics_summary.csv", index=False)
+print("📄 Saved diagnostic results to results/diagnostics_summary.csv")

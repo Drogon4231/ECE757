@@ -8,9 +8,10 @@ from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import joblib
 from datetime import datetime
+import os
 
 # Load and prepare data
-df = pd.read_csv("/Users/harshithkantamneni/Desktop/757_Project/code/ECE757/src/benchmark_results 1.csv")
+df = pd.read_csv("data/ml_data/training_data.csv")
 
 # Enhanced feature engineering
 df["size_ratio"] = df["matrix_size"] / df["partition_size"]
@@ -98,14 +99,20 @@ y_pred = xgb_model.predict(X_test)
 test_rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 print(f"XGBoost Test RMSE: {test_rmse:.4f}")
 
+# Ensure the output directory exists
+os.makedirs("scripts/models", exist_ok=True)
+
+# Dump scaler
+joblib.dump(scaler, "scripts/models/scaler.pkl")
+
 # Random Forest baseline
 rf = RandomForestRegressor(n_estimators=100, random_state=42)
 rf_scores = cross_val_score(rf, X_train, y_train, cv=5, scoring="neg_mean_squared_error")
 print(f"Random Forest CV RMSE: {np.sqrt(-rf_scores.mean()):.4f}")
 
 # Save model
-joblib.dump(xgb_model, "xgboost_model.pkl")
-print("Model saved as 'xgboost_model.pkl'")
+joblib.dump(xgb, "scripts/models/model.pkl")
+print("Model saved as 'model.pkl'")
 
 # Feature importance
 plt.figure(figsize=(12,8))
